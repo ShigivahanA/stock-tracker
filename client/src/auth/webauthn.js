@@ -140,14 +140,10 @@ export async function registerCredential() {
 
 /**
  * Unified verification / sign-in
- */
-export async function verifyCredential() {
+ */export async function verifyCredential() {
   if (!isWebAuthnSupported()) throw new Error("WebAuthn not supported on this device.");
 
   const stored = localStorage.getItem("webauthnCredential");
-  if (!stored) throw new Error("No credential registered.");
-
-  const cred = JSON.parse(stored);
   const challenge = generateChallenge();
 
   const rpId =
@@ -158,26 +154,20 @@ export async function verifyCredential() {
   const publicKey = {
     challenge: base64urlToArrayBuffer(challenge),
     rpId,
-    allowCredentials: [
-      {
-        id: base64urlToArrayBuffer(cred.rawId),
-        type: "public-key",
-      },
-    ],
     userVerification: "preferred",
-    timeout: 20000,
+    timeout: 30000,
   };
 
+  // ✅ If Google Credential Manager is available, let it auto-discover credentials
   const isGoogleReady = await waitForGoogleIdentity();
   if (isGoogleReady) {
     try {
       console.log("📱 Using Google Credential Manager API for login...");
 
-      // ✅ FIXED: Remove "get:" wrapper
+      // ⚠️ Important: don't pass `publicKey` here — it blocks auto-discovery
       const assertion = await window.google.identity.credentials.get({
-        publicKey,
         mediation: "optional",
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(20000),
       });
 
       if (assertion) {
@@ -185,22 +175,31 @@ export async function verifyCredential() {
         return true;
       }
     } catch (err) {
-      console.warn("Google Credential Manager login failed, fallback:", err);
+      console.warn("⚠️ Google Credential Manager login failed, falling back:", err);
     }
   }
 
-  // ✅ Fallback for Safari / desktop
+  // ✅ Fallback for standard WebAuthn (Safari / desktop)
+  if (stored) {
+    const cred = JSON.parse(stored);
+    publicKey.allowCredentials = [
+      {
+        id: base64urlToArrayBuffer(cred.rawId),
+        type: "public-key",
+      },
+    ];
+  }
+
   try {
     const assertion = await navigator.credentials.get({ publicKey });
     if (assertion) {
-      console.log("✅ Credential verified via WebAuthn fallback.");
+      console.log("✅ Credential verified via standard WebAuthn fallback.");
       return true;
     }
   } catch (err) {
-    console.error("❌ WebAuthn verification failed:", err);
+    console.error("❌ WebAuthn fallback failed:", err);
     throw new Error("Verification failed. Please try again.");
   }
 
-  return false;
+  throw new Error("No credentials available for this app.");
 }
-
