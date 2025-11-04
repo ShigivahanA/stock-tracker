@@ -23,7 +23,7 @@ export const AppProvider = ({ children }) => {
   const addEntry = async (entry) => {
     setLoading(true);
     try {
-      await axios.post(`${baseURL}/entries`, entry);
+      await axios.post(`${baseURL}/api/entries`, entry);
       await fetchEntries();
     } catch (err) {
       alert(err.response?.data?.error || "Failed to save entry");

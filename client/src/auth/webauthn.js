@@ -88,9 +88,11 @@ export async function verifyCredential() {
   pubKeyCredParams: [{ type: "public-key", alg: -7 }],
   timeout: 60000,
   authenticatorSelection: {
-    authenticatorAttachment: "platform", // ✅ uses fingerprint / Face ID
+    authenticatorAttachment: "platform",
+    residentKey: "required",
     userVerification: "required",
   },
+  timeout: 60000,
 };
 
 
