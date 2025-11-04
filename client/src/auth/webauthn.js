@@ -1,6 +1,8 @@
 // src/auth/webauthn.js
 
-// Generate a random base64url-encoded challenge
+/**
+ * Utility: Generate a random base64url-encoded challenge
+ */
 function generateChallenge(length = 32) {
   const bytes = new Uint8Array(length);
   crypto.getRandomValues(bytes);
@@ -10,7 +12,9 @@ function generateChallenge(length = 32) {
     .replace(/=/g, "");
 }
 
-// Convert from base64url string to ArrayBuffer
+/**
+ * Conversion helpers
+ */
 function base64urlToArrayBuffer(base64url) {
   const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
   const binary = atob(base64);
@@ -20,7 +24,6 @@ function base64urlToArrayBuffer(base64url) {
   return bytes.buffer;
 }
 
-// Convert from ArrayBuffer to base64url
 function arrayBufferToBase64url(buffer) {
   const bytes = new Uint8Array(buffer);
   let binary = "";
@@ -28,74 +31,124 @@ function arrayBufferToBase64url(buffer) {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
 
-// Check if device supports WebAuthn
+/**
+ * Capability check
+ */
 export const isWebAuthnSupported = () =>
-  window.PublicKeyCredential !== undefined;
+  typeof window.PublicKeyCredential !== "undefined";
 
-// Register new credential
+/**
+ * Detect if Google Credential Manager API is available (Android only)
+ */
+function isGoogleCredentialManagerAvailable() {
+  return (
+    typeof window.google !== "undefined" &&
+    window.google.identity &&
+    window.google.identity.credentials
+  );
+}
+
+/**
+ * Unified registration (works for iOS, Android, Desktop)
+ */
 export async function registerCredential() {
-  if (!isWebAuthnSupported()) throw new Error("WebAuthn not supported.");
+  if (!isWebAuthnSupported()) throw new Error("WebAuthn not supported");
 
   const challenge = generateChallenge();
 
   const publicKey = {
     challenge: base64urlToArrayBuffer(challenge),
-    rp: { name: "Stock Tracker" },
-    user: {
-      id: new TextEncoder().encode("local-user"),
-      name: "local@user",
-      displayName: "Local User",
+    rp: {
+      name: "Stock Tracker",
+      id: window.location.hostname, // critical for Android/PWA consistency
     },
-    pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+    user: {
+      id: new TextEncoder().encode("athithan-user"),
+      name: "athithan@local",
+      displayName: "Athithan",
+    },
+    pubKeyCredParams: [{ type: "public-key", alg: -7 }], // ES256
     timeout: 60000,
-    authenticatorSelection: { userVerification: "required" },
+    authenticatorSelection: {
+      authenticatorAttachment: "platform",
+      residentKey: "required",
+      userVerification: "required",
+    },
   };
 
-  const credential = await navigator.credentials.create({ publicKey });
+  // ✅ Prefer Google Credential Manager API for Android
+  if (isGoogleCredentialManagerAvailable()) {
+    console.log("📱 Using Google Credential Manager API for passkey registration...");
+    try {
+      const cred = await window.google.identity.credentials.create({
+        publicKey,
+        mediation: "required",
+      });
+      if (cred) {
+        const credentialData = {
+          id: cred.id,
+          rawId: cred.rawId ? arrayBufferToBase64url(cred.rawId) : "",
+          type: cred.type,
+        };
+        localStorage.setItem("webauthnCredential", JSON.stringify(credentialData));
+        return credentialData;
+      }
+    } catch (err) {
+      console.warn("Google Credential Manager registration failed, falling back:", err);
+    }
+  }
 
+  // fallback: standard WebAuthn
+  const credential = await navigator.credentials.create({ publicKey });
   const credentialData = {
     id: credential.id,
     rawId: arrayBufferToBase64url(credential.rawId),
     type: credential.type,
   };
-
   localStorage.setItem("webauthnCredential", JSON.stringify(credentialData));
   return credentialData;
 }
 
-// Authenticate existing credential
+/**
+ * Unified verification / sign-in
+ */
 export async function verifyCredential() {
-  if (!isWebAuthnSupported()) throw new Error("WebAuthn not supported.");
+  if (!isWebAuthnSupported()) throw new Error("WebAuthn not supported");
 
   const stored = localStorage.getItem("webauthnCredential");
   if (!stored) throw new Error("No credential registered.");
 
   const cred = JSON.parse(stored);
-
   const challenge = generateChallenge();
 
   const publicKey = {
-  challenge: base64urlToArrayBuffer(challenge),
-  rp: {
-    name: "Stock Tracker",
-    id: window.location.hostname, // auto use vercel domain (important!)
-  },
-  user: {
-    id: new TextEncoder().encode("local-user"),
-    name: "local@user",
-    displayName: "Local User",
-  },
-  pubKeyCredParams: [{ type: "public-key", alg: -7 }],
-  timeout: 60000,
-  authenticatorSelection: {
-    authenticatorAttachment: "platform",
-    residentKey: "required",
+    challenge: base64urlToArrayBuffer(challenge),
+    rpId: window.location.hostname, // match domain
+    allowCredentials: [
+      {
+        id: base64urlToArrayBuffer(cred.rawId),
+        type: "public-key",
+      },
+    ],
     userVerification: "required",
-  },
-  timeout: 60000,
-};
+    timeout: 60000,
+  };
 
+  // ✅ Try Google Credential Manager API for Android login
+  if (isGoogleCredentialManagerAvailable()) {
+    console.log("📱 Using Google Credential Manager API for login...");
+    try {
+      const assertion = await window.google.identity.credentials.get({
+        publicKey,
+        mediation: "optional",
+      });
+      if (assertion) return true;
+    } catch (err) {
+      console.warn("Google Credential Manager login failed, fallback:", err);
+    }
+  }
 
+  // fallback: standard WebAuthn
   const assertion = await navigator.credentials.get({ publicKey });
   return !!assertion;
 }
