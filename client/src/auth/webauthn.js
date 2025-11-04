@@ -29,7 +29,7 @@ function arrayBufferToBase64url(buffer) {
 }
 
 export const isAndroid = /Android/i.test(navigator.userAgent);
-export const isWebAuthnSupported =
+export const isWebAuthnSupported =() =>
   typeof window.PublicKeyCredential !== "undefined";
 
 /**
