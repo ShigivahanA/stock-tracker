@@ -5,25 +5,30 @@ import { TrendingUp, TrendingDown, Clock4 } from "lucide-react";
 export default function History() {
   const { entries } = useContext(AppContext);
 
-  // sort newest first
-  const sorted = useMemo(
-    () => [...entries].sort((a, b) => new Date(b.date) - new Date(a.date)),
-    [entries]
-  );
+  // 🗓️ Sort entries by date (newest first)
+  const sorted = useMemo(() => {
+    return [...entries].sort((a, b) => new Date(b.date) - new Date(a.date));
+  }, [entries]);
 
-  // compute day-to-day profit/loss by stock
-  const rows = sorted.map((e) => {
-    const prev = sorted.find(
-      (p) => p.stockId?._id === e.stockId?._id && p.date < e.date && p.type === "close"
-    );
-    let change = null;
-    if (e.type === "close" && prev) {
-      change = e.totalValue - prev.totalValue;
-    }
-    return { ...e, change };
-  });
+  // 💰 Compute day-to-day profit/loss per stock
+  const rows = useMemo(() => {
+    return sorted.map((entry) => {
+      const prev = sorted.find(
+        (p) =>
+          p.stockId?._id === entry.stockId?._id &&
+          p.date < entry.date // earlier entry
+      );
 
-  // Total gain/loss across all close entries
+      let change = null;
+      if (prev) {
+        change = entry.totalValue - prev.totalValue;
+      }
+
+      return { ...entry, change };
+    });
+  }, [sorted]);
+
+  // 📈 Total combined change across all stocks
   const netChange = rows.reduce((acc, e) => acc + (e.change || 0), 0);
   const positive = netChange > 0;
   const negative = netChange < 0;
@@ -34,7 +39,7 @@ export default function History() {
       <header className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">History</h1>
-          <p className="text-sm text-gray-500">All your recorded entries</p>
+          <p className="text-sm text-gray-500">All your recorded daily entries</p>
         </div>
         <Clock4 className="text-blue-600" size={26} />
       </header>
@@ -66,7 +71,9 @@ export default function History() {
               <span className="text-lg font-semibold">—</span>
             )}
           </div>
-          <p className="text-xs opacity-80 mt-1">Net profit/loss over recorded sessions</p>
+          <p className="text-xs opacity-80 mt-1">
+            Net profit/loss across all recorded days
+          </p>
         </div>
       )}
 
@@ -80,7 +87,6 @@ export default function History() {
               <tr>
                 <th className="px-4 py-2 text-left">Date</th>
                 <th className="px-4 py-2 text-left">Stock</th>
-                <th className="px-4 py-2 text-center">Type</th>
                 <th className="px-4 py-2 text-right">Unit (₹)</th>
                 <th className="px-4 py-2 text-right">Total (₹)</th>
                 <th className="px-4 py-2 text-right">Δ (₹)</th>
@@ -96,18 +102,7 @@ export default function History() {
                 >
                   <td className="px-4 py-2 text-gray-700">{e.date}</td>
                   <td className="px-4 py-2 text-gray-700 font-medium">
-                    {e.stockId?.symbol}
-                  </td>
-                  <td className="px-4 py-2 text-center">
-                    <span
-                      className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                        e.type === "open"
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-yellow-100 text-yellow-700"
-                      }`}
-                    >
-                      {e.type}
-                    </span>
+                    {e.stockId?.symbol || "-"}
                   </td>
                   <td className="px-4 py-2 text-right text-gray-800 font-medium">
                     {e.unitPrice.toFixed(4)}

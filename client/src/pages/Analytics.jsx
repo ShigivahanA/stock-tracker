@@ -14,22 +14,30 @@ import {
 export default function Analytics() {
   const { entries, stocks } = useContext(AppContext);
 
-  // group entries by stockId
+  /**
+   * 🔹 Group entries by stockId and prepare chart data
+   */
   const grouped = useMemo(() => {
     const map = {};
+
     for (const e of entries) {
-      const id = e.stockId?._id;
+      const id = e.stockId?._id || e.stockId;
       if (!id) continue;
+
       if (!map[id]) map[id] = [];
+
       map[id].push({
-        date: e.date + " " + e.type,
+        date: e.date, // no need to include e.type anymore
         unitPrice: Number(e.unitPrice),
         totalValue: Number(e.totalValue),
       });
     }
-    for (const k in map) {
-      map[k].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    // Sort entries by date ascending
+    for (const id in map) {
+      map[id].sort((a, b) => new Date(a.date) - new Date(b.date));
     }
+
     return map;
   }, [entries]);
 
@@ -38,7 +46,7 @@ export default function Analytics() {
       {/* Header */}
       <header className="flex items-center justify-between mb-2">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">            
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             Analytics
           </h1>
           <p className="text-sm text-gray-500">
@@ -47,7 +55,7 @@ export default function Analytics() {
         </div>
       </header>
 
-      {/* Charts */}
+      {/* Charts per fund */}
       {stocks.map((s) => (
         <section key={s._id} className="space-y-3">
           <h2 className="text-lg font-semibold text-gray-800">
@@ -76,18 +84,21 @@ export default function Analytics() {
                   </defs>
 
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+
                   <XAxis
                     dataKey="date"
                     tick={{ fontSize: 10 }}
-                    tickFormatter={(v) => v.split(" ")[0].slice(5)}
+                    tickFormatter={(v) => v.slice(5)} // shows MM-DD
                     stroke="#9ca3af"
                   />
+
                   <YAxis
                     tick={{ fontSize: 10 }}
                     stroke="#9ca3af"
                     width={60}
                     tickFormatter={(v) => `₹${v}`}
                   />
+
                   <Tooltip
                     contentStyle={{
                       backgroundColor: "#fff",
@@ -96,13 +107,16 @@ export default function Analytics() {
                       fontSize: "0.8rem",
                     }}
                     formatter={(v) => [`₹${v.toFixed(2)}`, ""]}
+                    labelFormatter={(label) => `Date: ${label}`}
                   />
+
                   <Legend
                     wrapperStyle={{
                       paddingTop: 8,
                       fontSize: "0.75rem",
                     }}
                   />
+
                   <Line
                     type="monotone"
                     dataKey="unitPrice"
@@ -110,7 +124,7 @@ export default function Analytics() {
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4 }}
-                    name="Unit Price ₹"
+                    name="Unit Price (₹)"
                   />
                   <Line
                     type="monotone"
@@ -119,7 +133,7 @@ export default function Analytics() {
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4 }}
-                    name="Total Value ₹"
+                    name="Total Value (₹)"
                   />
                 </LineChart>
               </ResponsiveContainer>
