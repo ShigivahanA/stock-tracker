@@ -1,6 +1,12 @@
 /**
- * Generate a random base64url-encoded challenge
+ * -----------------------------
+ *  Hybrid Authentication Logic
+ *  - iOS / Desktop → WebAuthn
+ *  - Android → Google Sign-In (only for your account)
+ * -----------------------------
  */
+
+/** Generate a random base64url-encoded challenge */
 function generateChallenge(length = 32) {
   const bytes = new Uint8Array(length);
   crypto.getRandomValues(bytes);
@@ -10,9 +16,7 @@ function generateChallenge(length = 32) {
     .replace(/=/g, "");
 }
 
-/**
- * Conversion helpers
- */
+/** Conversion helpers */
 function base64urlToArrayBuffer(base64url) {
   const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
   const binary = atob(base64);
@@ -25,18 +29,74 @@ function arrayBufferToBase64url(buffer) {
   const bytes = new Uint8Array(buffer);
   let binary = "";
   for (let b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
 }
 
+/** Device checks */
 export const isAndroid = /Android/i.test(navigator.userAgent);
-export const isWebAuthnSupported =() =>
+export const isWebAuthnSupported = () =>
   typeof window.PublicKeyCredential !== "undefined";
 
 /**
- * Passkey registration (iOS + Desktop)
+ * -----------------------------
+ *  Google Sign-In (Android only)
+ * -----------------------------
+ */
+export async function googleSignIn() {
+  return new Promise((resolve, reject) => {
+    if (!window.google || !window.google.accounts || !window.google.accounts.id) {
+      reject(new Error("Google Identity API not loaded."));
+      return;
+    }
+
+    window.google.accounts.id.initialize({
+      client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+      callback: (response) => {
+        if (response.credential) {
+          // Save token
+          localStorage.setItem("googleAuthToken", response.credential);
+          console.log("✅ Google Sign-In success");
+          resolve(response.credential);
+        } else {
+          reject(new Error("No credential returned"));
+        }
+      },
+      auto_select: true,
+      cancel_on_tap_outside: false,
+    });
+
+    // Only allow your Google account
+    window.google.accounts.id.renderButton(
+      document.getElementById("google-btn"),
+      {
+        theme: "outline",
+        size: "large",
+        text: "continue_with",
+        shape: "pill",
+        logo_alignment: "left",
+      }
+    );
+
+    window.google.accounts.id.prompt((notif) => {
+      if (notif.isNotDisplayed()) {
+        console.warn("Google One Tap not displayed:", notif.getNotDisplayedReason());
+      } else if (notif.isSkippedMoment()) {
+        console.warn("Google Sign-In skipped:", notif.getSkippedReason());
+      }
+    });
+  });
+}
+
+/**
+ * -----------------------------
+ *  WebAuthn Registration (iOS/Desktop)
+ * -----------------------------
  */
 export async function registerCredential() {
-  if (!isWebAuthnSupported) throw new Error("WebAuthn not supported");
+  if (!isWebAuthnSupported()) throw new Error("WebAuthn not supported");
 
   const challenge = generateChallenge();
   const rpId =
@@ -52,7 +112,7 @@ export async function registerCredential() {
       name: "athithan@local",
       displayName: "Athithan",
     },
-    pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+    pubKeyCredParams: [{ type: "public-key", alg: -7 }], // ES256
     timeout: 60000,
     authenticatorSelection: {
       authenticatorAttachment: "platform",
@@ -69,14 +129,17 @@ export async function registerCredential() {
   };
 
   localStorage.setItem("webauthnCredential", JSON.stringify(credentialData));
+  console.log("✅ Passkey registered successfully");
   return credentialData;
 }
 
 /**
- * Passkey verification (iOS + Desktop)
+ * -----------------------------
+ *  WebAuthn Verification (iOS/Desktop)
+ * -----------------------------
  */
 export async function verifyCredential() {
-  if (!isWebAuthnSupported) throw new Error("WebAuthn not supported");
+  if (!isWebAuthnSupported()) throw new Error("WebAuthn not supported");
 
   const stored = localStorage.getItem("webauthnCredential");
   if (!stored) throw new Error("No credential registered.");
@@ -103,5 +166,6 @@ export async function verifyCredential() {
   };
 
   const assertion = await navigator.credentials.get({ publicKey });
+  console.log("✅ Passkey verified successfully");
   return !!assertion;
 }
