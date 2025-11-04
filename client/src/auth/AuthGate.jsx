@@ -6,6 +6,7 @@ import {
   verifyCredential,
   isAndroid,
 } from "./webauthn";
+import { Fingerprint, LogIn, Smartphone, Lock, Loader2 } from "lucide-react";
 
 export default function AuthGate({ children }) {
   const [status, setStatus] = useState("checking");
@@ -15,7 +16,7 @@ export default function AuthGate({ children }) {
 
   const baseURL = import.meta.env.VITE_API_BASE_URL;
 
-  // Manual login handler
+  // 🧩 Manual Login
   const handleManualLogin = async () => {
     try {
       setLoading(true);
@@ -23,14 +24,14 @@ export default function AuthGate({ children }) {
       localStorage.setItem("manualAuthToken", res.data.token);
       setStatus("unlocked");
       setShowManualLogin(false);
-    } catch (err) {
+    } catch {
       alert("Invalid credentials");
     } finally {
       setLoading(false);
     }
   };
 
-  // --- Google Sign-In (Android only) ---
+  // 🤖 Google Sign-In (Android)
   const handleGoogleSignIn = async () => {
     try {
       await new Promise((resolve, reject) => {
@@ -38,7 +39,6 @@ export default function AuthGate({ children }) {
           reject(new Error("Google Identity API not loaded"));
           return;
         }
-
         window.google.accounts.id.initialize({
           client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
           callback: (resp) => {
@@ -48,21 +48,18 @@ export default function AuthGate({ children }) {
             } else reject(new Error("No Google credential returned"));
           },
         });
-
-        window.google.accounts.id.prompt((notification) => {
-          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            reject(new Error("User closed or canceled Google Sign-In"));
-          }
+        window.google.accounts.id.prompt((n) => {
+          if (n.isNotDisplayed() || n.isSkippedMoment())
+            reject(new Error("User canceled Google Sign-In"));
         });
       });
-
       setStatus("unlocked");
     } catch (err) {
       alert("Google Sign-In failed: " + err.message);
     }
   };
 
-  // --- WebAuthn Registration (iOS/Desktop) ---
+  // 🧠 WebAuthn registration + unlock
   const handleRegister = async () => {
     try {
       await registerCredential();
@@ -71,37 +68,26 @@ export default function AuthGate({ children }) {
       alert("Failed to register passkey: " + err.message);
     }
   };
-
-  // --- WebAuthn / Google Unlock ---
   const handleUnlock = async () => {
     try {
-      if (isAndroid) {
-        await handleGoogleSignIn();
-      } else {
-        const ok = await verifyCredential();
-        if (ok) setStatus("unlocked");
-      }
+      const ok = await verifyCredential();
+      if (ok) setStatus("unlocked");
     } catch (err) {
       alert("Unlock failed: " + err.message);
     }
   };
 
-  // --- Initialization ---
+  // 🧭 Initialization
   useEffect(() => {
     if (isAndroid) {
-      const token = localStorage.getItem("googleAuthToken");
+      const token = localStorage.getItem("googleAuthToken") || localStorage.getItem("manualAuthToken");
       if (token) setStatus("unlocked");
-      else setStatus("locked");
-      return;
-    }
-
-    const manualToken = localStorage.getItem("manualAuthToken");
-    if (manualToken) {
-      setStatus("unlocked");
+      else setShowManualLogin(true);
       return;
     }
 
     if (!isWebAuthnSupported()) {
+      alert("WebAuthn not supported on this device/browser.");
       setShowManualLogin(true);
       return;
     }
@@ -111,93 +97,116 @@ export default function AuthGate({ children }) {
     else setStatus("not-registered");
   }, []);
 
+  // 💫 Reusable Glass Wrapper
+  const GlassCard = ({ children }) => (
+    <div className="relative bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-8 w-[90%] max-w-sm text-center text-white animate-fadeIn">
+      {children}
+    </div>
+  );
+
+  // 🎨 Gradient Background
+  const GradientBG = () => (
+    <div className="fixed inset-0 bg-gradient-to-br from-blue-600 via-indigo-700 to-purple-800 animate-gradient" />
+  );
+
   // --- UI States ---
   if (status === "checking")
-    return <div className="p-4 text-center">Checking security...</div>;
-
-  if (showManualLogin)
     return (
-      <div className="flex flex-col items-center justify-center h-screen p-4">
-        <h1 className="text-xl font-bold mb-4">Manual Login</h1>
-        <div className="flex flex-col w-72 gap-3">
-          <input
-            type="text"
-            placeholder="Username"
-            value={form.username}
-            onChange={(e) => setForm({ ...form, username: e.target.value })}
-            className="border rounded-lg p-2 text-sm"
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-            className="border rounded-lg p-2 text-sm"
-          />
-          <button
-            onClick={handleManualLogin}
-            disabled={loading}
-            className="bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 transition"
-          >
-            {loading ? "Logging in..." : "Login"}
-          </button>
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-blue-700 via-indigo-800 to-purple-900 text-white">
+        <Loader2 className="animate-spin mr-2" size={28} />
+        Checking security...
+      </div>
+    );
+
+  if (showManualLogin && isAndroid)
+    return (
+      <>
+        <GradientBG />
+        <div className="flex flex-col items-center justify-center h-screen relative z-10">
+          <GlassCard>
+            <Smartphone size={40} className="mx-auto mb-4 text-blue-300" />
+            <h1 className="text-2xl font-bold mb-1">Sign in</h1>
+            <p className="text-sm text-blue-100 mb-6">Stock Tracker Secure Access</p>
+
+            <div className="flex flex-col gap-3 mb-4">
+              <input
+                type="text"
+                placeholder="Username"
+                value={form.username}
+                onChange={(e) => setForm({ ...form, username: e.target.value })}
+                className="bg-white/20 text-white placeholder-gray-300 border border-white/30 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
+              />
+              <input
+                type="password"
+                placeholder="Password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                className="bg-white/20 text-white placeholder-gray-300 border border-white/30 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
+              />
+            </div>
+
+            <button
+              onClick={handleManualLogin}
+              disabled={loading}
+              className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-lg py-2 transition"
+            >
+              {loading ? "Logging in..." : "Login"}
+            </button>
+
+            <button
+              onClick={handleGoogleSignIn}
+              className="mt-4 text-sm text-blue-200 hover:text-white underline"
+            >
+              Or continue with Google
+            </button>
+          </GlassCard>
         </div>
-      </div>
+      </>
     );
 
-  if (isAndroid) {
+  if (status === "not-registered" && !isAndroid)
     return (
-      <div className="flex flex-col items-center justify-center h-screen p-4">
-        <h1 className="text-xl font-bold mb-4">Sign in to Stock Tracker</h1>
-        <button
-          onClick={handleGoogleSignIn}
-          className="bg-red-500 text-white rounded-lg px-4 py-2"
-        >
-          Continue with Google
-        </button>
-      </div>
+      <>
+        <GradientBG />
+        <div className="flex items-center justify-center h-screen relative z-10">
+          <GlassCard>
+            <Fingerprint size={48} className="mx-auto mb-4 text-blue-300" />
+            <h1 className="text-2xl font-bold mb-2">Enable Passkey Login</h1>
+            <p className="text-sm text-blue-100 mb-6">
+              Secure your Stock Tracker with Face ID or Fingerprint.
+            </p>
+            <button
+              onClick={handleRegister}
+              className="bg-blue-500 hover:bg-blue-600 text-white rounded-lg px-6 py-2 transition font-medium"
+            >
+              Enable Biometric Unlock
+            </button>
+          </GlassCard>
+        </div>
+      </>
     );
-  }
 
-  if (status === "not-registered") {
+  if (status === "locked" && !isAndroid)
     return (
-      <div className="flex flex-col items-center justify-center h-screen p-4">
-        <h1 className="text-xl font-bold mb-4">Secure your app</h1>
-        <button
-          onClick={handleRegister}
-          className="bg-blue-600 text-white rounded-lg px-4 py-2"
-        >
-          Enable biometric unlock
-        </button>
-        <button
-          onClick={() => setShowManualLogin(true)}
-          className="mt-3 text-blue-600 text-sm underline"
-        >
-          Use manual login instead
-        </button>
-      </div>
+      <>
+        <GradientBG />
+        <div className="flex items-center justify-center h-screen relative z-10">
+          <GlassCard>
+            <Lock size={42} className="mx-auto mb-4 text-blue-300" />
+            <h1 className="text-2xl font-bold mb-2">Unlock Your Dashboard</h1>
+            <p className="text-sm text-blue-100 mb-6">
+              Use your registered passkey to continue securely.
+            </p>
+            <button
+              onClick={handleUnlock}
+              className="bg-green-500 hover:bg-green-600 text-white rounded-lg px-6 py-2 transition font-medium"
+            >
+              Unlock with Passkey
+            </button>
+          </GlassCard>
+        </div>
+      </>
     );
-  }
-
-  if (status === "locked") {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen p-4">
-        <h1 className="text-xl font-bold mb-4">Unlock Stock Tracker</h1>
-        <button
-          onClick={handleUnlock}
-          className="bg-green-600 text-white rounded-lg px-4 py-2"
-        >
-          Unlock with Fingerprint / Face ID
-        </button>
-        <button
-          onClick={() => setShowManualLogin(true)}
-          className="mt-3 text-blue-600 text-sm underline"
-        >
-          Use manual login instead
-        </button>
-      </div>
-    );
-  }
 
   return <>{children}</>;
 }

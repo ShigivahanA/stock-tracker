@@ -86,7 +86,7 @@ export default function Dashboard() {
       <header className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            Hello, Athithan 👋
+            Hello, Arunavathy 👋
           </h1>
           <p className="text-sm text-gray-500">Today • {today}</p>
         </div>
