@@ -172,25 +172,28 @@ export async function verifyCredential() {
   if (isGoogleReady) {
     try {
       console.log("📱 Using Google Credential Manager API for login...");
+
+      // ✅ FIXED: Remove "get:" wrapper
       const assertion = await window.google.identity.credentials.get({
-        get: { publicKey }, // ✅ Correct structure
+        publicKey,
         mediation: "optional",
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(15000),
       });
+
       if (assertion) {
         console.log("✅ Credential verified via Google Credential Manager.");
         return true;
       }
     } catch (err) {
-      console.warn("Credential Manager login failed, fallback:", err);
+      console.warn("Google Credential Manager login failed, fallback:", err);
     }
   }
 
-  // ✅ Fallback
+  // ✅ Fallback for Safari / desktop
   try {
     const assertion = await navigator.credentials.get({ publicKey });
     if (assertion) {
-      console.log("✅ Credential verified via WebAuthn.");
+      console.log("✅ Credential verified via WebAuthn fallback.");
       return true;
     }
   } catch (err) {
@@ -200,3 +203,4 @@ export async function verifyCredential() {
 
   return false;
 }
+
