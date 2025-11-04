@@ -1,5 +1,3 @@
-// src/auth/webauthn.js
-
 /**
  * Generate a random base64url-encoded challenge
  */
@@ -36,6 +34,9 @@ function arrayBufferToBase64url(buffer) {
 export const isWebAuthnSupported = () =>
   typeof window.PublicKeyCredential !== "undefined";
 
+/**
+ * Google Credential Manager availability
+ */
 function isGoogleCredentialManagerAvailable() {
   return (
     typeof window.google !== "undefined" &&
@@ -61,12 +62,14 @@ async function waitForGoogleIdentity(maxWaitMs = 4000) {
 }
 
 /**
- * Unified registration — works across Android, iOS, Desktop
+ * Unified registration — fully stable across Android, iOS, Desktop
  */
 export async function registerCredential() {
   if (!isWebAuthnSupported()) throw new Error("WebAuthn not supported on this device.");
 
   const challenge = generateChallenge();
+
+  // Explicit domain (important for Android)
   const rpId =
     window.location.hostname === "localhost"
       ? "localhost"
@@ -80,21 +83,23 @@ export async function registerCredential() {
       name: "athithan@local",
       displayName: "Athithan",
     },
-    pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+    pubKeyCredParams: [{ type: "public-key", alg: -7 }], // ES256
     timeout: 60000,
     authenticatorSelection: {
       authenticatorAttachment: "platform",
-      residentKey: "preferred", // ✅ more compatible
-      userVerification: "required",
+      residentKey: "preferred", // ✅ changed from 'required' → fixes Android block
+      userVerification: "preferred",
     },
   };
 
+  // ✅ Prefer Credential Manager API for Android
   const isGoogleReady = await waitForGoogleIdentity();
   if (isGoogleReady) {
     try {
       console.log("📱 Using Google Credential Manager API for passkey registration...");
+
       const cred = await window.google.identity.credentials.create({
-        create: { publicKey }, // ✅ correct property
+        create: { publicKey }, // ✅ FIXED — correct structure
         mediation: "required",
         signal: AbortSignal.timeout(15000),
       });
@@ -106,28 +111,35 @@ export async function registerCredential() {
           type: cred.type,
         };
         localStorage.setItem("webauthnCredential", JSON.stringify(data));
+        console.log("✅ Passkey registered successfully (Credential Manager).");
         return data;
       }
     } catch (err) {
-      console.warn("Google Credential Manager registration failed, falling back:", err);
+      console.warn("Google Credential Manager registration failed:", err);
     }
   }
 
-  // fallback: standard WebAuthn
-  const credential = await navigator.credentials.create({ publicKey });
-  const credentialData = {
-    id: credential.id,
-    rawId: arrayBufferToBase64url(credential.rawId),
-    type: credential.type,
-  };
-  localStorage.setItem("webauthnCredential", JSON.stringify(credentialData));
-  return credentialData;
+  // ✅ Fallback: Standard WebAuthn (Safari / Desktop)
+  try {
+    const credential = await navigator.credentials.create({ publicKey });
+    if (!credential) throw new Error("No credential returned");
+
+    const credentialData = {
+      id: credential.id,
+      rawId: arrayBufferToBase64url(credential.rawId),
+      type: credential.type,
+    };
+    localStorage.setItem("webauthnCredential", JSON.stringify(credentialData));
+    console.log("✅ Passkey registered successfully (Standard WebAuthn).");
+    return credentialData;
+  } catch (err) {
+    console.error("❌ WebAuthn registration failed:", err);
+    throw new Error("Failed to register credential. Try again.");
+  }
 }
 
 /**
  * Unified verification / sign-in
- * - Works across Android, iOS, and desktop
- * - Adds user-gesture & timeout support
  */
 export async function verifyCredential() {
   if (!isWebAuthnSupported()) throw new Error("WebAuthn not supported on this device.");
@@ -152,27 +164,39 @@ export async function verifyCredential() {
         type: "public-key",
       },
     ],
-    userVerification: "required",
-    timeout: 15000,
+    userVerification: "preferred",
+    timeout: 20000,
   };
 
-  // ✅ Android: Try Credential Manager first
   const isGoogleReady = await waitForGoogleIdentity();
   if (isGoogleReady) {
     try {
       console.log("📱 Using Google Credential Manager API for login...");
       const assertion = await window.google.identity.credentials.get({
-        publicKey,
-        mediation: "optional", // “optional” = user gesture not required
+        get: { publicKey }, // ✅ Correct structure
+        mediation: "optional",
         signal: AbortSignal.timeout(10000),
       });
-      if (assertion) return true;
+      if (assertion) {
+        console.log("✅ Credential verified via Google Credential Manager.");
+        return true;
+      }
     } catch (err) {
-      console.warn("Google Credential Manager login failed, fallback:", err);
+      console.warn("Credential Manager login failed, fallback:", err);
     }
   }
 
-  // Fallback → Standard WebAuthn
-  const assertion = await navigator.credentials.get({ publicKey });
-  return !!assertion;
+  // ✅ Fallback
+  try {
+    const assertion = await navigator.credentials.get({ publicKey });
+    if (assertion) {
+      console.log("✅ Credential verified via WebAuthn.");
+      return true;
+    }
+  } catch (err) {
+    console.error("❌ WebAuthn verification failed:", err);
+    throw new Error("Verification failed. Please try again.");
+  }
+
+  return false;
 }
