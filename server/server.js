@@ -5,6 +5,8 @@ import cors from "cors";
 import dotenv from "dotenv";
 import stockRoutes from "./routes/stockRoutes.js";
 import entryRoutes from "./routes/entryRoutes.js";
+import authRoutes from "./routes/auth.js";
+
 
 dotenv.config();
 const app = express();
@@ -22,6 +24,8 @@ mongoose
 // routes
 app.use("/api/stocks", stockRoutes);
 app.use("/api/entries", entryRoutes);
+app.use("/api/auth", authRoutes);
+
 
 app.get("/", (req, res) => res.send("Stock tracker API running"));
 
