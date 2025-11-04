@@ -70,7 +70,7 @@ export async function registerCredential() {
   const rpId =
     window.location.hostname === "localhost"
       ? "localhost"
-      : "stock-tracker-ecru-beta.vercel.app"; // ✅ explicit production domain
+      : "stock-tracker-ecru-beta.vercel.app";
 
   const publicKey = {
     challenge: base64urlToArrayBuffer(challenge),
@@ -84,21 +84,21 @@ export async function registerCredential() {
     timeout: 60000,
     authenticatorSelection: {
       authenticatorAttachment: "platform",
-      residentKey: "required",
+      residentKey: "preferred", // ✅ more compatible
       userVerification: "required",
     },
   };
 
-  // ✅ Android: Prefer Google Credential Manager API
   const isGoogleReady = await waitForGoogleIdentity();
   if (isGoogleReady) {
     try {
       console.log("📱 Using Google Credential Manager API for passkey registration...");
       const cred = await window.google.identity.credentials.create({
-        publicKey,
+        create: { publicKey }, // ✅ correct property
         mediation: "required",
-        signal: AbortSignal.timeout(15000), // prevent hanging
+        signal: AbortSignal.timeout(15000),
       });
+
       if (cred) {
         const data = {
           id: cred.id,
@@ -109,11 +109,11 @@ export async function registerCredential() {
         return data;
       }
     } catch (err) {
-      console.warn("Google Credential Manager registration failed, fallback:", err);
+      console.warn("Google Credential Manager registration failed, falling back:", err);
     }
   }
 
-  // Fallback → Standard WebAuthn (Safari, desktop, etc.)
+  // fallback: standard WebAuthn
   const credential = await navigator.credentials.create({ publicKey });
   const credentialData = {
     id: credential.id,
