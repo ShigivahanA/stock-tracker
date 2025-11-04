@@ -99,7 +99,7 @@ export async function registerCredential() {
       console.log("📱 Using Google Credential Manager API for passkey registration...");
 
       const cred = await window.google.identity.credentials.create({
-        create: { publicKey }, // ✅ FIXED — correct structure
+        create: { publicKey }, // Correct structure for GCM WebAuthn registration
         mediation: "required",
         signal: AbortSignal.timeout(15000),
       });
@@ -119,7 +119,7 @@ export async function registerCredential() {
     }
   }
 
-  // ✅ Fallback: Standard WebAuthn (Safari / Desktop)
+  // ✅ Fallback: Standard WebAuthn (Safari / Desktop / GCM failure)
   try {
     const credential = await navigator.credentials.create({ publicKey });
     if (!credential) throw new Error("No credential returned");
@@ -140,7 +140,8 @@ export async function registerCredential() {
 
 /**
  * Unified verification / sign-in
- */export async function verifyCredential() {
+ */
+export async function verifyCredential() {
   if (!isWebAuthnSupported()) throw new Error("WebAuthn not supported on this device.");
 
   const stored = localStorage.getItem("webauthnCredential");
@@ -158,20 +159,24 @@ export async function registerCredential() {
     timeout: 30000,
   };
 
-  // ✅ If Google Credential Manager is available, let it auto-discover credentials
+  // ✅ If Google Credential Manager is available, use it with full WebAuthn options
   const isGoogleReady = await waitForGoogleIdentity();
   if (isGoogleReady) {
     try {
       console.log("📱 Using Google Credential Manager API for login...");
 
-      // ⚠️ Important: don't pass `publicKey` here — it blocks auto-discovery
+      // 🔥 FIX APPLIED: We must nest 'publicKey' under 'get' to trigger the WebAuthn
+      // authentication flow via the Google Credential Manager on Android.
       const assertion = await window.google.identity.credentials.get({
+        get: { publicKey }, // <-- Correct structure for GCM WebAuthn login
         mediation: "optional",
         signal: AbortSignal.timeout(20000),
       });
 
       if (assertion) {
         console.log("✅ Credential verified via Google Credential Manager.");
+        // In a real application, you would send the assertion to the server
+        // for verification here, but for client-side demo, we return true.
         return true;
       }
     } catch (err) {
@@ -179,7 +184,7 @@ export async function registerCredential() {
     }
   }
 
-  // ✅ Fallback for standard WebAuthn (Safari / desktop)
+  // ✅ Fallback for standard WebAuthn (Safari / desktop / GCM failure)
   if (stored) {
     const cred = JSON.parse(stored);
     publicKey.allowCredentials = [
