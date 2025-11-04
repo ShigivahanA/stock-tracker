@@ -4,6 +4,8 @@ import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import {
   TrendingUp,
+  RotateCcw,
+    Loader2,
   Clock,
   BarChart2,
   ArrowRight,
@@ -13,7 +15,7 @@ import {
 } from "lucide-react";
 
 export default function Dashboard() {
-  const { stocks, entries } = useContext(AppContext);
+  const { stocks, entries, fetchAllData, loading } = useContext(AppContext);
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = async () => {
