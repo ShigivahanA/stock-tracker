@@ -1,7 +1,7 @@
 // src/auth/webauthn.js
 
 /**
- * Utility: Generate a random base64url-encoded challenge
+ * Generate a random base64url-encoded challenge
  */
 function generateChallenge(length = 32) {
   const bytes = new Uint8Array(length);
@@ -18,9 +18,8 @@ function generateChallenge(length = 32) {
 function base64urlToArrayBuffer(base64url) {
   const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
   const binary = atob(base64);
-  const len = binary.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes.buffer;
 }
 
@@ -32,14 +31,11 @@ function arrayBufferToBase64url(buffer) {
 }
 
 /**
- * Capability check
+ * Capability checks
  */
 export const isWebAuthnSupported = () =>
   typeof window.PublicKeyCredential !== "undefined";
 
-/**
- * Detect if Google Credential Manager API is available (Android only)
- */
 function isGoogleCredentialManagerAvailable() {
   return (
     typeof window.google !== "undefined" &&
@@ -49,25 +45,42 @@ function isGoogleCredentialManagerAvailable() {
 }
 
 /**
- * Unified registration (works for iOS, Android, Desktop)
+ * Wait until Google Identity script is loaded
+ */
+async function waitForGoogleIdentity(maxWaitMs = 4000) {
+  if (isGoogleCredentialManagerAvailable()) return true;
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const timer = setInterval(() => {
+      if (isGoogleCredentialManagerAvailable() || Date.now() - start > maxWaitMs) {
+        clearInterval(timer);
+        resolve(isGoogleCredentialManagerAvailable());
+      }
+    }, 200);
+  });
+}
+
+/**
+ * Unified registration — works across Android, iOS, Desktop
  */
 export async function registerCredential() {
-  if (!isWebAuthnSupported()) throw new Error("WebAuthn not supported");
+  if (!isWebAuthnSupported()) throw new Error("WebAuthn not supported on this device.");
 
   const challenge = generateChallenge();
+  const rpId =
+    window.location.hostname === "localhost"
+      ? "localhost"
+      : "stock-tracker-ecru-beta.vercel.app"; // ✅ explicit production domain
 
   const publicKey = {
     challenge: base64urlToArrayBuffer(challenge),
-    rp: {
-      name: "Stock Tracker",
-      id: window.location.hostname, // critical for Android/PWA consistency
-    },
+    rp: { name: "Stock Tracker", id: rpId },
     user: {
       id: new TextEncoder().encode("athithan-user"),
       name: "athithan@local",
       displayName: "Athithan",
     },
-    pubKeyCredParams: [{ type: "public-key", alg: -7 }], // ES256
+    pubKeyCredParams: [{ type: "public-key", alg: -7 }],
     timeout: 60000,
     authenticatorSelection: {
       authenticatorAttachment: "platform",
@@ -76,29 +89,31 @@ export async function registerCredential() {
     },
   };
 
-  // ✅ Prefer Google Credential Manager API for Android
-  if (isGoogleCredentialManagerAvailable()) {
-    console.log("📱 Using Google Credential Manager API for passkey registration...");
+  // ✅ Android: Prefer Google Credential Manager API
+  const isGoogleReady = await waitForGoogleIdentity();
+  if (isGoogleReady) {
     try {
+      console.log("📱 Using Google Credential Manager API for passkey registration...");
       const cred = await window.google.identity.credentials.create({
         publicKey,
         mediation: "required",
+        signal: AbortSignal.timeout(15000), // prevent hanging
       });
       if (cred) {
-        const credentialData = {
+        const data = {
           id: cred.id,
           rawId: cred.rawId ? arrayBufferToBase64url(cred.rawId) : "",
           type: cred.type,
         };
-        localStorage.setItem("webauthnCredential", JSON.stringify(credentialData));
-        return credentialData;
+        localStorage.setItem("webauthnCredential", JSON.stringify(data));
+        return data;
       }
     } catch (err) {
-      console.warn("Google Credential Manager registration failed, falling back:", err);
+      console.warn("Google Credential Manager registration failed, fallback:", err);
     }
   }
 
-  // fallback: standard WebAuthn
+  // Fallback → Standard WebAuthn (Safari, desktop, etc.)
   const credential = await navigator.credentials.create({ publicKey });
   const credentialData = {
     id: credential.id,
@@ -111,9 +126,11 @@ export async function registerCredential() {
 
 /**
  * Unified verification / sign-in
+ * - Works across Android, iOS, and desktop
+ * - Adds user-gesture & timeout support
  */
 export async function verifyCredential() {
-  if (!isWebAuthnSupported()) throw new Error("WebAuthn not supported");
+  if (!isWebAuthnSupported()) throw new Error("WebAuthn not supported on this device.");
 
   const stored = localStorage.getItem("webauthnCredential");
   if (!stored) throw new Error("No credential registered.");
@@ -121,9 +138,14 @@ export async function verifyCredential() {
   const cred = JSON.parse(stored);
   const challenge = generateChallenge();
 
+  const rpId =
+    window.location.hostname === "localhost"
+      ? "localhost"
+      : "stock-tracker-ecru-beta.vercel.app";
+
   const publicKey = {
     challenge: base64urlToArrayBuffer(challenge),
-    rpId: window.location.hostname, // match domain
+    rpId,
     allowCredentials: [
       {
         id: base64urlToArrayBuffer(cred.rawId),
@@ -131,16 +153,18 @@ export async function verifyCredential() {
       },
     ],
     userVerification: "required",
-    timeout: 60000,
+    timeout: 15000,
   };
 
-  // ✅ Try Google Credential Manager API for Android login
-  if (isGoogleCredentialManagerAvailable()) {
-    console.log("📱 Using Google Credential Manager API for login...");
+  // ✅ Android: Try Credential Manager first
+  const isGoogleReady = await waitForGoogleIdentity();
+  if (isGoogleReady) {
     try {
+      console.log("📱 Using Google Credential Manager API for login...");
       const assertion = await window.google.identity.credentials.get({
         publicKey,
-        mediation: "optional",
+        mediation: "optional", // “optional” = user gesture not required
+        signal: AbortSignal.timeout(10000),
       });
       if (assertion) return true;
     } catch (err) {
@@ -148,7 +172,7 @@ export async function verifyCredential() {
     }
   }
 
-  // fallback: standard WebAuthn
+  // Fallback → Standard WebAuthn
   const assertion = await navigator.credentials.get({ publicKey });
   return !!assertion;
 }
