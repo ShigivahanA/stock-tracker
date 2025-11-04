@@ -11,12 +11,12 @@ export const AppProvider = ({ children }) => {
   const baseURL = import.meta.env.VITE_API_BASE_URL;
 
   const fetchStocks = async () => {
-    const res = await axios.get(`${baseURL}/stocks`);
+    const res = await axios.get(`${baseURL}/api/stocks`);
     setStocks(res.data);
   };
 
   const fetchEntries = async () => {
-    const res = await axios.get(`${baseURL}/entries`);
+    const res = await axios.get(`${baseURL}/api/entries`);
     setEntries(res.data);
   };
 

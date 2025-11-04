@@ -9,34 +9,17 @@ const router = express.Router();
  * Helper: get IST date string and auto type
  */
 function getISTDateAndAutoType() {
-  // produce Date in IST
   const now = new Date();
-  // get locale string in Asia/Kolkata then reconstruct
-  const parts = now.toLocaleString("en-GB", { timeZone: "Asia/Kolkata" }); // "DD/MM/YYYY, HH:MM:SS"
-  const [datePart, timePart] = parts.split(",").map(s => s.trim());
-  // datePart: DD/MM/YYYY
+  const parts = now.toLocaleString("en-GB", { timeZone: "Asia/Kolkata" });
+  const [datePart] = parts.split(",");
   const [dd, mm, yyyy] = datePart.split("/");
-  // timePart: HH:MM:SS
-  const [hh, min] = timePart.split(":");
-  const hour = parseInt(hh, 10);
-  const minute = parseInt(min, 10);
-
   const dateStr = `${yyyy}-${mm.padStart(2,"0")}-${dd.padStart(2,"0")}`;
 
-  // Market rules (India NSE): open 09:15, close 15:30.
-  // Auto-type rules (sensible windows):
-  // if time >= 09:15 and < 12:00 -> open
-  // if time >= 15:30 and <= 23:59 -> close
-  const isAfterOpen = hour > 9 || (hour === 9 && minute >= 15);
-  const beforeNoon = hour < 12;
-  const isAfterClose = hour > 15 || (hour === 15 && minute >= 30);
+  // 🔧 TEST MODE: alternate automatically between open and close every call
+  const currentMinutes = now.getMinutes();
+  const autoType = currentMinutes % 2 === 0 ? "open" : "close";
 
-  let autoType = "manual";
-  if (isAfterOpen && beforeNoon) autoType = "open";
-  else if (isAfterClose) autoType = "close";
-  else autoType = "out-of-window";
-
-  return { dateStr, autoType, hour, minute };
+  return { dateStr, autoType, hour: now.getHours(), minute: now.getMinutes() };
 }
 
 // POST create entry
