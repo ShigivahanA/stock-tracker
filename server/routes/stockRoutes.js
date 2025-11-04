@@ -36,4 +36,17 @@ router.put("/:id", async (req, res) => {
   }
 });
 
+// PATCH /api/stocks/:id
+router.patch("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { units } = req.body;
+    const updated = await Stock.findByIdAndUpdate(id, { units }, { new: true });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update units" });
+  }
+});
+
 export default router;

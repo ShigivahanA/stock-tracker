@@ -6,6 +6,8 @@ import EntryForm from "./components/EntryForm";
 import History from "./pages/History";
 import Analytics from "./pages/Analytics";
 import Navbar from "./components/Navbar";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function App() {
   return (
@@ -21,6 +23,7 @@ export default function App() {
             </Routes>
           </main>
           <Navbar />
+          <ToastContainer />
         </div>
       </Router>
     </AppProvider>

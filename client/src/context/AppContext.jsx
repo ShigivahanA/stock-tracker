@@ -65,6 +65,17 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const updateStockUnits = async (stockId, newUnits) => {
+  try {
+    await axios.patch(`${baseURL}/api/stocks/${stockId}`, { units: newUnits });
+    await fetchStocks(); // refresh list
+    toast.success("Units updated!", { autoClose: 1000 });
+  } catch (err) {
+    console.error("Failed to update units:", err);
+    toast.error("Failed to update units");
+  }
+};
+
   /**
    * 🔹 Initial load
    */
@@ -82,6 +93,7 @@ export const AppProvider = ({ children }) => {
         fetchEntries,
         fetchAllData, // ✅ make sure this is exposed for Dashboard refresh
         loading,
+        updateStockUnits,
       }}
     >
       {children}

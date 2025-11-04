@@ -153,39 +153,9 @@ export default function Dashboard() {
       <section>
         <h2 className="text-lg font-semibold text-gray-800 mb-2">Investment Funds</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Opportunities Fund */}
-          <div className="bg-white border rounded-2xl p-4 shadow-sm hover:shadow-md transition">
-            <div className="flex justify-between items-center">
-              <h3 className="font-semibold text-gray-800">Opportunities Fund</h3>
-              <BarChart2 className="text-blue-500" size={20} />
-            </div>
-            <p className="text-sm text-gray-500 mt-2">
-              Aggressive fund focusing on high-growth sectors.
-            </p>
-            <Link
-              to="/analytics"
-              className="text-blue-600 text-sm mt-3 inline-flex items-center font-medium"
-            >
-              View Insights <ArrowRight size={14} className="ml-1" />
-            </Link>
-          </div>
-
-          {/* Balanced Fund */}
-          <div className="bg-white border rounded-2xl p-4 shadow-sm hover:shadow-md transition">
-            <div className="flex justify-between items-center">
-              <h3 className="font-semibold text-gray-800">Balanced Fund</h3>
-              <BarChart2 className="text-green-500" size={20} />
-            </div>
-            <p className="text-sm text-gray-500 mt-2">
-              Stable fund blending equity and fixed income for consistency.
-            </p>
-            <Link
-              to="/analytics"
-              className="text-green-600 text-sm mt-3 inline-flex items-center font-medium"
-            >
-              View Insights <ArrowRight size={14} className="ml-1" />
-            </Link>
-          </div>
+          {stocks.map((s) => (
+      <EditableFundCard key={s._id} stock={s} />
+    ))}
         </div>
       </section>
 
@@ -272,6 +242,76 @@ export default function Dashboard() {
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+
+function EditableFundCard({ stock }) {
+  const { updateStockUnits } = useContext(AppContext);
+  const [isEditing, setIsEditing] = useState(false);
+  const [units, setUnits] = useState(stock.units || 0);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    await updateStockUnits(stock._id, Number(units));
+    setSaving(false);
+    setIsEditing(false);
+  };
+
+  return (
+    <div className="bg-white border rounded-2xl p-4 shadow-sm hover:shadow-md transition">
+      <div className="flex justify-between items-start">
+        <div>
+          <h3 className="font-semibold text-gray-800">{stock.name}</h3>
+          <p className="text-sm text-gray-500">{stock.symbol}</p>
+        </div>
+
+        <button
+          onClick={() => setIsEditing(!isEditing)}
+          className="text-blue-600 text-sm font-medium hover:underline"
+        >
+          {isEditing ? "Cancel" : "Edit"}
+        </button>
+      </div>
+
+      <p className="text-sm text-gray-500 mt-2">
+        {stock.symbol === "OF"
+          ? "Aggressive fund focusing on high-growth sectors."
+          : "Stable fund blending equity and fixed income for consistency."}
+      </p>
+
+      <div className="mt-3">
+        {isEditing ? (
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={units}
+              onChange={(e) => setUnits(e.target.value)}
+              className="border rounded-lg px-3 py-1 text-sm w-24"
+            />
+            <button
+              disabled={saving}
+              onClick={handleSave}
+              className="bg-blue-600 text-white text-sm px-3 py-1 rounded-lg hover:bg-blue-700 transition"
+            >
+              {saving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        ) : (
+          <p className="mt-1 text-gray-800">
+            <span className="font-semibold">{units}</span> units
+          </p>
+        )}
+      </div>
+
+      <Link
+        to="/analytics"
+        className="text-blue-600 text-sm mt-3 inline-flex items-center font-medium"
+      >
+        View Insights <ArrowRight size={14} className="ml-1" />
+      </Link>
     </div>
   );
 }
