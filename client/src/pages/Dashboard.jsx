@@ -1,6 +1,7 @@
-import React, { useContext, useMemo } from "react";
+import React, { useContext, useMemo, useState } from "react";
 import { AppContext } from "../context/AppContext";
 import { Link } from "react-router-dom";
+import { toast } from "react-toastify";
 import {
   TrendingUp,
   Clock,
@@ -13,6 +14,20 @@ import {
 
 export default function Dashboard() {
   const { stocks, entries } = useContext(AppContext);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    try {
+      setRefreshing(true);
+      await fetchAllData(); // refresh from backend
+      toast.success("Data refreshed successfully!", { autoClose: 1000 });
+    } catch (err) {
+      toast.error("Refresh failed!");
+      console.error("Refresh failed:", err);
+    } finally {
+      setTimeout(() => setRefreshing(false), 800); // small visual delay
+    }
+  };
 
   const today = new Date().toLocaleDateString("en-IN", {
     day: "2-digit",
@@ -92,13 +107,24 @@ export default function Dashboard() {
   return (
     <div className="p-4 bg-gray-50 min-h-screen space-y-6">
       {/* Header */}
-      <header className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Hello, Athithan 👋</h1>
-          <p className="text-sm text-gray-500">Today • {today}</p>
-        </div>
-        <TrendingUp className="text-blue-600" size={28} />
-      </header>
+<header className="flex justify-between items-center">
+  <div>
+    <h1 className="text-2xl font-bold text-gray-900">Hello, Athithan 👋</h1>
+    <p className="text-sm text-gray-500">Today • {today}</p>
+  </div>
+
+  <button
+    onClick={handleRefresh}
+    className="p-2 bg-blue-50 border border-blue-200 rounded-full hover:bg-blue-100 transition active:scale-95"
+    aria-label="Refresh"
+  >
+    {refreshing ? (
+      <Loader2 className="text-blue-600 animate-spin" size={22} />
+    ) : (
+      <RotateCcw className="text-blue-600" size={22} />
+    )}
+  </button>
+</header>
 
       {/* Market Info */}
       <div className="bg-white rounded-2xl shadow-sm border p-4 flex flex-col sm:flex-row sm:justify-between sm:items-center">
