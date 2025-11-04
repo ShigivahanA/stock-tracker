@@ -1,29 +1,51 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import ManualLoginForm from "../components/ManualLoginForm";
 import {
   isWebAuthnSupported,
   registerCredential,
   verifyCredential,
-  isAndroid,
 } from "./webauthn";
-import { Fingerprint, LogIn, Smartphone, Lock, Loader2 } from "lucide-react";
+import { Fingerprint, Smartphone, Lock, Loader2 } from "lucide-react";
+
+/* 🧠 Bulletproof Android Detection */
+function detectAndroid() {
+  try {
+    if (navigator.userAgentData?.platform?.toLowerCase().includes("android"))
+      return true;
+
+    const ua = navigator.userAgent.toLowerCase();
+    if (ua.includes("android")) return true;
+
+    const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+    const isiOS = /iphone|ipad|ipod|macintosh/i.test(ua);
+    const isMobile = /mobile|chrome|safari|wv|version/i.test(ua);
+    if (isTouch && isMobile && !isiOS) return true;
+  } catch (e) {
+    console.warn("Android detection failed:", e);
+  }
+  return false;
+}
 
 export default function AuthGate({ children }) {
   const [status, setStatus] = useState("checking");
-  const [showManualLogin, setShowManualLogin] = useState(false);
+  const [isManualLogin, setIsManualLogin] = useState(false);
   const [form, setForm] = useState({ username: "", password: "" });
   const [loading, setLoading] = useState(false);
+  const [initialized, setInitialized] = useState(false); // ✅ ensures init runs once
 
   const baseURL = import.meta.env.VITE_API_BASE_URL;
+  const isAndroidDevice = useMemo(() => detectAndroid(), []);
 
-  // 🧩 Manual Login
-  const handleManualLogin = async () => {
+  /* 🔐 Manual Login (Android only) */
+  const handleManualLogin = async (e) => {
+    e.preventDefault();
     try {
       setLoading(true);
       const res = await axios.post(`${baseURL}/api/auth/login`, form);
       localStorage.setItem("manualAuthToken", res.data.token);
       setStatus("unlocked");
-      setShowManualLogin(false);
+      setIsManualLogin(false);
     } catch {
       alert("Invalid credentials");
     } finally {
@@ -31,35 +53,7 @@ export default function AuthGate({ children }) {
     }
   };
 
-  // 🤖 Google Sign-In (Android)
-  const handleGoogleSignIn = async () => {
-    try {
-      await new Promise((resolve, reject) => {
-        if (!window.google || !window.google.accounts) {
-          reject(new Error("Google Identity API not loaded"));
-          return;
-        }
-        window.google.accounts.id.initialize({
-          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-          callback: (resp) => {
-            if (resp.credential) {
-              localStorage.setItem("googleAuthToken", resp.credential);
-              resolve();
-            } else reject(new Error("No Google credential returned"));
-          },
-        });
-        window.google.accounts.id.prompt((n) => {
-          if (n.isNotDisplayed() || n.isSkippedMoment())
-            reject(new Error("User canceled Google Sign-In"));
-        });
-      });
-      setStatus("unlocked");
-    } catch (err) {
-      alert("Google Sign-In failed: " + err.message);
-    }
-  };
-
-  // 🧠 WebAuthn registration + unlock
+  /* 🔐 Passkey setup / unlock (Desktop + iOS) */
   const handleRegister = async () => {
     try {
       await registerCredential();
@@ -68,6 +62,7 @@ export default function AuthGate({ children }) {
       alert("Failed to register passkey: " + err.message);
     }
   };
+
   const handleUnlock = async () => {
     try {
       const ok = await verifyCredential();
@@ -77,39 +72,50 @@ export default function AuthGate({ children }) {
     }
   };
 
-  // 🧭 Initialization
+  /* 🧭 Initialization Logic */
   useEffect(() => {
-    if (isAndroid) {
-      const token = localStorage.getItem("googleAuthToken") || localStorage.getItem("manualAuthToken");
-      if (token) setStatus("unlocked");
-      else setShowManualLogin(true);
-      return;
+    if (initialized) return; // ✅ prevent rerun after login typing
+    setInitialized(true);
+
+    try {
+      if (isAndroidDevice) {
+        const token = localStorage.getItem("manualAuthToken");
+        if (token) setStatus("unlocked");
+        else {
+          setIsManualLogin(true);
+          setStatus("locked");
+        }
+        return;
+      }
+
+      if (!isWebAuthnSupported()) {
+        console.warn("WebAuthn not supported, skipping biometric lock.");
+        setStatus("unlocked");
+        return;
+      }
+
+      const stored = localStorage.getItem("webauthnCredential");
+      if (stored) setStatus("locked");
+      else setStatus("not-registered");
+    } catch (err) {
+      console.error("Auth init error:", err);
+      setStatus("unlocked");
     }
+  }, [isAndroidDevice, initialized]);
 
-    if (!isWebAuthnSupported()) {
-      alert("WebAuthn not supported on this device/browser.");
-      setShowManualLogin(true);
-      return;
-    }
-
-    const stored = localStorage.getItem("webauthnCredential");
-    if (stored) setStatus("locked");
-    else setStatus("not-registered");
-  }, []);
-
-  // 💫 Reusable Glass Wrapper
-  const GlassCard = ({ children }) => (
+  /* 💫 Glass Wrapper */
+  const GlassCard = React.memo(({ children }) => (
     <div className="relative bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-8 w-[90%] max-w-sm text-center text-white animate-fadeIn">
       {children}
     </div>
-  );
+  ));
 
-  // 🎨 Gradient Background
-  const GradientBG = () => (
+  /* 🎨 Background Gradient */
+  const GradientBG = React.memo(() => (
     <div className="fixed inset-0 bg-gradient-to-br from-blue-600 via-indigo-700 to-purple-800 animate-gradient" />
-  );
+  ));
 
-  // --- UI States ---
+  /* ⏳ Checking */
   if (status === "checking")
     return (
       <div className="flex items-center justify-center h-screen bg-gradient-to-br from-blue-700 via-indigo-800 to-purple-900 text-white">
@@ -118,53 +124,24 @@ export default function AuthGate({ children }) {
       </div>
     );
 
-  if (showManualLogin && isAndroid)
+    const handleLoginSuccess = () => {
+  setStatus("unlocked");
+  setIsManualLogin(false);
+};
+
+  /* 📱 Manual Login (Android) */
+  if (isManualLogin && isAndroidDevice)
     return (
-      <>
-        <GradientBG />
-        <div className="flex flex-col items-center justify-center h-screen relative z-10">
-          <GlassCard>
-            <Smartphone size={40} className="mx-auto mb-4 text-blue-300" />
-            <h1 className="text-2xl font-bold mb-1">Sign in</h1>
-            <p className="text-sm text-blue-100 mb-6">Stock Tracker Secure Access</p>
-
-            <div className="flex flex-col gap-3 mb-4">
-              <input
-                type="text"
-                placeholder="Username"
-                value={form.username}
-                onChange={(e) => setForm({ ...form, username: e.target.value })}
-                className="bg-white/20 text-white placeholder-gray-300 border border-white/30 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
-              />
-              <input
-                type="password"
-                placeholder="Password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="bg-white/20 text-white placeholder-gray-300 border border-white/30 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
-              />
-            </div>
-
-            <button
-              onClick={handleManualLogin}
-              disabled={loading}
-              className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-lg py-2 transition"
-            >
-              {loading ? "Logging in..." : "Login"}
-            </button>
-
-            <button
-              onClick={handleGoogleSignIn}
-              className="mt-4 text-sm text-blue-200 hover:text-white underline"
-            >
-              Or continue with Google
-            </button>
-          </GlassCard>
-        </div>
-      </>
+      <ManualLoginForm
+      GlassCard={GlassCard}
+      GradientBG={GradientBG}
+      baseURL={baseURL}
+      onSuccess={handleLoginSuccess}
+    />
     );
 
-  if (status === "not-registered" && !isAndroid)
+  /* 🧩 Passkey setup */
+  if (status === "not-registered" && !isAndroidDevice)
     return (
       <>
         <GradientBG />
@@ -186,14 +163,15 @@ export default function AuthGate({ children }) {
       </>
     );
 
-  if (status === "locked" && !isAndroid)
+  /* 🔒 Unlock existing passkey */
+  if (status === "locked" && !isAndroidDevice)
     return (
       <>
         <GradientBG />
         <div className="flex items-center justify-center h-screen relative z-10">
           <GlassCard>
             <Lock size={42} className="mx-auto mb-4 text-blue-300" />
-            <h1 className="text-2xl font-bold mb-2">Unlock Your Dashboard</h1>
+            <h1 className="text-2xl font-bold mb-2">Unlock Dashboard</h1>
             <p className="text-sm text-blue-100 mb-6">
               Use your registered passkey to continue securely.
             </p>
@@ -208,5 +186,6 @@ export default function AuthGate({ children }) {
       </>
     );
 
+  /* ✅ Authenticated */
   return <>{children}</>;
 }
