@@ -9,7 +9,7 @@ const router = express.Router();
  */
 function getISTDateString() {
   const nowUTC = new Date();
-  const nowIST = new Date(nowUTC.getTime() + 5.5 * 60 * 60 * 1000); // UTC + 5:30
+  const nowIST = new Date(nowUTC.getTime() + 5.5 * 60 * 60 * 1000);
   const yyyy = nowIST.getUTCFullYear();
   const mm = String(nowIST.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(nowIST.getUTCDate()).padStart(2, "0");
@@ -18,12 +18,11 @@ function getISTDateString() {
 
 /**
  * 🟢 POST: Create or update an entry
- * Body: { stockId, unitPrice, totalValue, remarks? }
- * Automatically uses today's IST date
+ * Body: { stockId, unitPrice, totalValue, date?, remarks? }
  */
 router.post("/", async (req, res) => {
   try {
-    const { stockId, unitPrice, totalValue, remarks } = req.body;
+    const { stockId, unitPrice, totalValue, remarks, date } = req.body;
 
     if (!stockId || unitPrice == null || totalValue == null) {
       return res
@@ -31,16 +30,18 @@ router.post("/", async (req, res) => {
         .json({ error: "stockId, unitPrice, and totalValue are required." });
     }
 
+    // ✅ Use user-selected date or fallback to today's date
+    const dateStr = date
+      ? new Date(date).toISOString().slice(0, 10)
+      : getISTDateString();
+
     const stock = await Stock.findById(stockId);
     if (!stock) {
       return res.status(404).json({ error: "Stock not found." });
     }
 
-    const dateStr = getISTDateString();
-
-    // 🧩 Prevent duplicates (only one per day per stock)
+    // 🧩 Prevent duplicates (one entry per date per stock)
     const existing = await Entry.findOne({ stockId, date: dateStr });
-
     if (existing) {
       return res.status(409).json({
         error: `Entry already exists for ${stock.name} on ${dateStr}.`,
@@ -66,7 +67,10 @@ router.post("/", async (req, res) => {
       });
     }
     console.error("❌ Failed to create entry:", err);
-    res.status(500).json({ error: "Failed to create entry.", details: err.message });
+    res.status(500).json({
+      error: "Failed to create entry.",
+      details: err.message,
+    });
   }
 });
 
